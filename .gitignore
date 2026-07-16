@@ -1,0 +1,6 @@
+.cpcache/
+.lsp/
+.clj-kondo/
+export/
+models/ecosystem-*/
+dev/hive-eco-config.edn

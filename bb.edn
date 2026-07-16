@@ -1,0 +1,44 @@
+{:tasks
+ {:requires ([babashka.fs :as fs]
+             [babashka.process :refer [shell]])
+
+  regen-docs
+  {:doc "Derive ecosystem models, render every view, rasterize PNG+SVG.
+         Env: HIVE_ECO_ROOT (default ..), HIVE_ECO_CONFIG (default dev/hive-eco-config.edn),
+         HIVE_ECO_DOCS (optional dir to sync rendered diagrams into)."
+   :task
+   (let [root    (or (System/getenv "HIVE_ECO_ROOT") "..")
+         config  (or (System/getenv "HIVE_ECO_CONFIG") "dev/hive-eco-config.edn")
+         docs    (System/getenv "HIVE_ECO_DOCS")
+         puml-d  "export/plantuml/hive/views"
+         dot-d   "export/graphviz/hive/views"
+         emit-fx (format
+                  (str "(require '[hive-overarch.derive.ecosystem :as eco])"
+                       "(let [res (eco/emit-from-config! {:root %s :config-path %s})]"
+                       "  (println (pr-str res))"
+                       "  (System/exit (if (:ok res) 0 1)))")
+                  (pr-str root)
+                  (pr-str (when (fs/exists? config) config)))]
+     (println "== emit models (root" root "config" config ")")
+     (shell "clojure" "-M" "-e" emit-fx)
+     (println "== render via overarch CLI")
+     (doseq [m ["models/ecosystem-full" "models/ecosystem-open"]
+             r ["plantuml" "graphviz"]]
+       (shell "clojure" "-M:overarch-cli" "-m" m "-r" r))
+     (println "== rasterize")
+     (doseq [f (fs/glob puml-d "*.puml")]
+       (shell "plantuml" "-tpng" (str f))
+       (shell "plantuml" "-tsvg" (str f)))
+     (doseq [f (fs/glob dot-d "*.dot")
+             :let [base (fs/strip-ext (fs/file-name f))]]
+       (shell "dot" "-Tpng" (str f) "-o" (str dot-d "/" base ".png"))
+       (shell "dot" "-Tsvg" (str f) "-o" (str dot-d "/" base ".svg"))
+       (shell "twopi" "-Tpng" "-Goverlap=false" "-Gsplines=true" "-Granksep=3"
+              (str f) "-o" (str dot-d "/" base "-radial.png")))
+     (when docs
+       (println "== sync to" docs)
+       (fs/create-dirs docs)
+       (doseq [d [puml-d dot-d]
+               f (concat (fs/glob d "*.png") (fs/glob d "*.svg"))]
+         (fs/copy f (fs/path docs (fs/file-name f)) {:replace-existing true})))
+     (println "regen-docs done"))}}}

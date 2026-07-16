@@ -1,0 +1,5 @@
+{:project-id "hive-overarch"
+ :parent "hive"
+ :description "Overarch C4 architecture-as-data: KG-derived model snapshots, view rendering, and bounded-context persona projection for the hive ecosystem"
+ :language :clojure
+ :tags ["overarch" "architecture" "c4" "model" "views" "kg" "carto" "persona" "addon"] :carto {:source-roots ["dev" "resources" "src" "test"]}}
