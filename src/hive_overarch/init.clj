@@ -154,3 +154,13 @@
         {:registered cmds :total (count cmds) :tool "code"}
         {:registered [] :total 0}))
     {:registered [] :total 0}))
+
+(defn addon-ctor
+  "Pure constructor - (config -> IAddon | nil). Reifies the hive.overarch IAddon
+   WITHOUT the register!/init! self-registration that `init-as-addon!` performs.
+   Returns nil when the hive-mcp IAddon protocol is absent from the classpath
+   (graceful). The mounter (hive-addon.mount) resolves this via :addon/init-fn
+   and itself drives register!/initialize!. Additive: the self-registering
+   `init-as-addon!` path remains for the current hive-mcp loader."
+  [_config]
+  (make-addon))

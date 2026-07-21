@@ -2,7 +2,7 @@
  :addon/kind         :addon
  :addon/type         :native
  :addon/init-ns      "hive-overarch.init"
- :addon/init-fn      "init-as-addon!"
+ :addon/init-fn      "addon-ctor"
  :addon/version      "0.1.0"
  :addon/capabilities #{:tools}
  :addon/description  "Overarch C4 architecture-as-data — KG-derived snapshots, view rendering, bounded-context persona projection"}
