@@ -16,7 +16,7 @@
   org.clojars.quoll/tiara {:mvn/version "0.4.0"}
 
   ;; Result monad (ROP) + rescue/guard/let-ok — the hive error-handling substrate.
-  io.github.hive-agi/hive-dsl   {:mvn/version "0.5.7"}
+  io.github.hive-agi/hive-dsl   {:mvn/version "0.5.8"}
 
   ;; Bounded parallel execution (bounded-pmap/fork-join) + guarded futures — used
   ;; to parallelize the many per-qn carto reads during model derivation.
