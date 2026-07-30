@@ -7,7 +7,7 @@
 
 (def Layer
   "Coarse architectural stratum a project belongs to."
-  [:enum :foundation :host :knowledge :storage :agent :ui :tooling :lib])
+  [:enum :foundation :host :knowledge :storage :domain :agent :ui :product :tooling :lib])
 
 (def EcoConfig
   "The particular monorepo, as data: everything org/project-specific that the
