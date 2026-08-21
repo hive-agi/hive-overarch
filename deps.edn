@@ -16,7 +16,7 @@
   org.clojars.quoll/tiara {:mvn/version "0.5.2"}
 
   ;; Result monad (ROP) + rescue/guard/let-ok — the hive error-handling substrate.
-  io.github.hive-agi/hive-dsl   {:mvn/version "0.5.14"}
+  io.github.hive-agi/hive-dsl   {:mvn/version "0.5.15"}
 
   ;; Bounded parallel execution (bounded-pmap/fork-join) + guarded futures — used
   ;; to parallelize the many per-qn carto reads during model derivation.
@@ -24,7 +24,7 @@
 
   ;; Filesystem boundary (IPathQuery + fs.core) — ecosystem probe reads the
   ;; monorepo through this seam instead of raw java.io.
-  io.github.hive-agi/hive-system {:mvn/version "0.3.4"}
+  io.github.hive-agi/hive-system {:mvn/version "0.3.5"}
 
   ;; malli — schema layer for the ecosystem value objects (self-contained; no
   ;; hive-spi). House pin: 0.20.1.
@@ -34,7 +34,7 @@
  {
   ;; :build — tools.build entrypoint (clojure -T:build <task>). Canonical hive
   ;; build: jar / jar-aot / install / bump / verify-license / deploy.
-  :build {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.8"}}
+  :build {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.9"}}
           :ns-default hive-build.api}
 :dev {:extra-paths ["dev"]
         :extra-deps {nrepl/nrepl {:mvn/version "1.7.0"}
