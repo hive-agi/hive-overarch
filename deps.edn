@@ -1,7 +1,7 @@
 {:paths ["src" "resources"]
 
  :deps
- {org.clojure/clojure {:mvn/version "1.12.1"}
+ {org.clojure/clojure {:mvn/version "1.12.5"}
 
   ;; Upstream Overarch — architecture-as-data model + renderers.
   ;; Consumed as SOURCE (git), not the Clojars 0.41.0 artifact: that artifact
@@ -42,7 +42,7 @@
 
   :test {:extra-paths ["test"]
          :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                      org.clojure/test.check {:mvn/version "1.1.1"}
+                      org.clojure/test.check {:mvn/version "1.1.3"}
                       io.github.hive-agi/hive-test {:mvn/version "0.3.12"}}
          :main-opts ["-m" "kaocha.runner"]}
 
