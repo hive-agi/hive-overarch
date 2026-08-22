@@ -1,5 +1,14 @@
 # hive-overarch
 
+<!-- hive-badges -->
+
+[![Clojars Project](https://img.shields.io/clojars/v/io.github.hive-agi/hive-overarch.svg)](https://clojars.org/io.github.hive-agi/hive-overarch)
+[![cljdoc](https://cljdoc.org/badge/io.github.hive-agi/hive-overarch)](https://cljdoc.org/d/io.github.hive-agi/hive-overarch/CURRENT)
+[![release](https://github.com/hive-agi/hive-overarch/actions/workflows/release.yml/badge.svg)](https://github.com/hive-agi/hive-overarch/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+<!-- /hive-badges -->
+
 Architecture-as-data for the hive ecosystem. Derives **C4 model snapshots** from
 the carto code-graph, persists them in hive memory/KG, renders them to diagrams
 via [Overarch](https://github.com/soulspace-org/overarch), and projects
