@@ -3,6 +3,11 @@
  :deps
  {org.clojure/clojure {:mvn/version "1.12.5"}
 
+  ;; hive-addon: the IAddon contract this addon implements. Depending on the
+  ;; contract lib rather than on a host namespace is what lets any host,
+  ;; hive-mcp or not, mount this jar.
+  io.github.hive-agi/hive-addon {:mvn/version "0.3.10"}
+
   ;; Upstream Overarch — architecture-as-data model + renderers.
   ;; Consumed as SOURCE (git), not the Clojars 0.41.0 artifact: that artifact
   ;; is an AOT uberjar bundling compiled sci/edamame classes that shadow any

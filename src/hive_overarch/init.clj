@@ -14,6 +14,7 @@
             [hive-overarch.orchestrator :as orch]
             [hive-overarch.hive :as hive]
             [hive-overarch.protocols :as p]
+            [hive-addon.protocol :as addon]
             [hive-dsl.result :as r]))
 
 (defn- try-resolve [sym] (r/rescue nil (requiring-resolve sym)))
@@ -102,9 +103,8 @@
                     :description "Derive ecosystem C4 model + mind-map from monorepo facts and emit full + open Overarch model dirs"}})
 
 (defn- make-addon []
-  (when (try-resolve 'hive-mcp.addons.protocol/IAddon)
-    (let [state (atom {:initialized? false})]
-      (reify hive-mcp.addons.protocol/IAddon
+  (let [state (atom {:initialized? false})]
+    (reify addon/IAddon
         (addon-id   [_] "hive.overarch")
         (addon-type [_] :native)
         (capabilities [_] #{:tools})
@@ -132,7 +132,7 @@
             {:status :ok   :details {:commands (count commands)}}
             {:status :down :details {:reason "not initialized"}}))
         (excluded-tools [_] #{})
-        (hooks [_] {})))))
+        (hooks [_] {}))))
 
 (defn init-as-addon!
   "Zero-arg loader entry point. Constructs the IAddon, self-registers it, runs
