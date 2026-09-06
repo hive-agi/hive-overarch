@@ -5,4 +5,6 @@
  :addon/init-fn      "addon-ctor"
  :addon/version      "0.1.0"
  :addon/capabilities #{:tools}
- :addon/description  "Overarch C4 architecture-as-data — KG-derived snapshots, view rendering, bounded-context persona projection"}
+ :addon/description  "Overarch C4 architecture-as-data — KG-derived snapshots, view rendering, bounded-context persona projection"
+ :addon/maturity :beta
+ :addon/trust-class :foss}
