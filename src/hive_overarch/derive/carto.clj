@@ -22,7 +22,21 @@
       (let [cols   (apply map vector splits)
             common (take-while #(apply = %) cols)]
         (if (seq common)
-          (str/join "." (map first common))
+          (let [common-strs (map first common)]
+            (if (and (= 1 (count common-strs))
+                     (some #(>= (count %) 2) splits))
+              (let [second-segs (keep #(when (>= (count %) 2) (nth % 1)) splits)
+                    freqs       (frequencies second-segs)
+                    max-freq    (apply max (vals freqs))
+                    dominant    (->> (filter #(= max-freq (val %)) freqs)
+                                    (map key)
+                                    sort
+                                    first)
+                    k           (dec (count (distinct second-segs)))]
+                (if (zero? k)
+                  (str (first common-strs) "." dominant)
+                  (str (first common-strs) "." dominant "+" k)))
+              (str/join "." common-strs)))
           (first namespaces))))))
 
 (defn- cluster->element [idx qns]
