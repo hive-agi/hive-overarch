@@ -5,7 +5,8 @@
    classpath, cooperates when the hive jars are present, and degrades
    gracefully when they are not. This is the ONLY namespace permitted to reach
    into hive-knowledge / hive-mcp internals. All returns are hive-dsl Results."
-  (:require [hive-dsl.result :as r]))
+  (:require [hive-dsl.result :as r]
+            [hive-addon.registry.commands :as addon-cmds]))
 
 (defn- resolve-fn [sym]
   (r/rescue nil (requiring-resolve sym)))
@@ -87,15 +88,27 @@
 
 ;; ---- MCP command contribution (hive-mcp) — used by the addon at init ----
 
+(defn- contributed-tree
+  "The full contributed-command tree across every tool, {tool-name {cmd-name cmd-spec}}.
+   Mirrors hive-mcp.extensions.registry's all-contributions, rebuilt from the
+   hive-addon store so callers still see the whole tree, not just the names
+   this call touched."
+  []
+  (into {} (map (juxt identity addon-cmds/get-commands)) (addon-cmds/contributed-tool-names)))
+
 (defn contribute-commands!
   "Register subcommands for a composite MCP tool -> Result."
   [tool-name addon-id commands]
-  (call 'hive-mcp.extensions.registry/contribute-commands! tool-name addon-id commands))
+  (r/try-effect* :hive/call-failed
+    (addon-cmds/contribute! tool-name addon-id commands)
+    (contributed-tree)))
 
 (defn retract-commands!
   "Reclaim all commands contributed by addon-id -> Result."
   [addon-id]
-  (call 'hive-mcp.extensions.registry/retract-all-by-addon! addon-id))
+  (r/try-effect* :hive/call-failed
+    (addon-cmds/retract-all! addon-id)
+    (contributed-tree)))
 
 ;; ---- embedding policy (hive-mcp) — declare structurally-addressed types ----
 
