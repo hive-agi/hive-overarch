@@ -10,12 +10,12 @@
   (:require [clojure.edn :as edn]
             [hive-overarch.derive.ecosystem :as eco-source]
             [hive-overarch.ecosystem.emit :as eco-emit]
-            [hive-overarch.store.kg :as store]
             [hive-overarch.orchestrator :as orch]
             [hive-overarch.hive :as hive]
             [hive-overarch.protocols :as p]
             [hive-addon.protocol :as addon]
-            [hive-dsl.result :as r]))
+            [hive-dsl.result :as r]
+            [hive-addon.opaque.codec :as codec]))
 
 (defn- try-resolve [sym] (r/rescue nil (requiring-resolve sym)))
 
@@ -28,79 +28,93 @@
     (str "ERROR: " (pr-str res))))
 
 (defn- param-scope [params]
-  (or (get params "scope") (get params "path")))
+  (or (:scope params) (:path params)))
 
-(defn- h-snapshot [params]
-  (result->str (orch/snapshot! @system (param-scope params) {})))
+(defn- h-snapshot [sys params]
+  (result->str (orch/snapshot! sys (param-scope params) {})))
 
-(defn- h-render [params]
-  (let [kind  (some-> (get params "view") keyword)
-        focus (some-> (get params "focus") keyword)
-        fmt   (or (some-> (get params "format") keyword) :plantuml)]
+(defn- h-render [sys params]
+  (let [kind  (some-> (:view params) keyword)
+        focus (some-> (:focus params) keyword)
+        fmt   (or (some-> (:format params) keyword) :plantuml)]
     (result->str
-      (orch/render! @system (param-scope params)
+      (orch/render! sys (param-scope params)
                     (cond-> {:format fmt}
                       kind  (assoc :view-kind kind)
                       focus (assoc :focus focus))))))
 
-(defn- h-persona [params]
-  (let [eid (some-> (or (get params "element") (get params "function")) keyword)]
-    (result->str (r/map-ok (orch/persona! @system (param-scope params) eid)
+(defn- h-persona [sys params]
+  (let [eid (some-> (or (:element params) (:function params)) keyword)]
+    (result->str (r/map-ok (orch/persona! sys (param-scope params) eid)
                            :prompt-fragment))))
 
-(defn- h-list [params]
-  (result->str (orch/list-snapshots @system (param-scope params))))
+(defn- h-list [sys params]
+  (result->str (orch/list-snapshots sys (param-scope params))))
 
 (defn- eco-config [params]
-  (if-let [inline (get params "config-edn")]
+  (if-let [inline (:config-edn params)]
     (r/rescue (r/err :ecosystem/config-invalid {:config-edn inline})
               (r/ok (edn/read-string inline)))
-    (if-let [path (get params "config")]
+    (if-let [path (:config params)]
       (eco-source/load-config path)
       (r/ok {}))))
 
-(defn- h-eco-emit [params]
+(defn- h-eco-emit [sys params]
   (result->str
    (r/let-ok [config  (eco-config params)
               model   (p/derive-model (eco-source/ecosystem-source {:config config})
-                                      (get params "root") {})
-              emitted (eco-emit/emit! model (or (get params "out") "models"))]
-     (if (contains? #{"true" "1" true} (get params "persist"))
-       (r/map-ok (p/put-snapshot (store/kg-store) model)
+                                      (:root params) {})
+              emitted (eco-emit/emit! model (or (:out params) "models"))]
+     (if (contains? #{"true" "1" true} (:persist params))
+       (r/map-ok (p/put-snapshot (:store sys) model)
                  (fn [ref] (assoc emitted :snapshot (into {} ref))))
        (r/ok emitted)))))
 
-(def ^:private commands
-  {"arch-snapshot" {:handler     h-snapshot
-                    :params      {"scope" {:type "string"
-                                           :description "Project scope/id (or path) to derive the model from"}}
-                    :description "Derive a C4 architecture snapshot from carto and persist it"}
-   "arch-render"   {:handler     h-render
-                    :params      {"scope"  {:type "string" :description "Project scope (or path)"}
-                                  "view"   {:type "string"
-                                            :description "View kind: system-landscape-view|context-view|container-view|component-view"}
-                                  "focus"  {:type "string" :description "Optional element id to focus the view"}
-                                  "format" {:type "string" :description "Output format (plantuml)"}}
-                    :description "Render the latest architecture snapshot to a diagram string"}
-   "arch-persona"  {:handler     h-persona
-                    :params      {"scope"   {:type "string" :description "Project scope (or path)"}
-                                  "element" {:type "string" :description "C4 element id to build a persona for"}}
-                    :description "Project a bounded-context persona prompt from the latest snapshot"}
-   "arch-list"     {:handler     h-list
-                    :params      {"scope" {:type "string" :description "Project scope (or path)"}}
-                    :description "List persisted C4 architecture snapshots for a scope"}
-   "arch-eco-emit" {:handler     h-eco-emit
-                    :params      {"root"       {:type "string"
-                                                :description "Monorepo root to probe (deps.edn graph, git remotes, addon manifests)"}
-                                  "out"        {:type "string"
-                                                :description "Output dir for Overarch model dirs (default: models)"}
-                                  "config"     {:type "string"
-                                                :description "Path to an EcoConfig EDN file (orgs, layer table, visibility rules)"}
-                                  "config-edn" {:type "string"
-                                                :description "Inline EcoConfig EDN (overrides config path)"}
-                                  "persist"    {:type "string"
-                                                :description "\"true\" to also persist the full model as a c4-snapshot via IModelStore"}}
-                    :description "Derive ecosystem C4 model + mind-map from monorepo facts and emit full + open Overarch model dirs"}})
+(defn- bind-handler
+  "(sys params) -> String handler as the host's (params) -> String handler.
+   Derefs SYSTEM-REF on each call and keywordizes PARAMS keys, so string- and
+   keyword-keyed argument maps reach H in one shape."
+  [system-ref h]
+  (fn [params] (h @system-ref (codec/normalize-args params))))
+
+(defn command-table
+  "Subcommand contributions for the 'code' supertool, each handler bound to
+   SYSTEM-REF (an IDeref yielding an OverarchSystem). Handlers accept params
+   with string or keyword keys."
+  [system-ref]
+  (let [bind (partial bind-handler system-ref)]
+    {"arch-snapshot" {:handler     (bind h-snapshot)
+                      :params      {"scope" {:type "string"
+                                             :description "Project scope/id (or path) to derive the model from"}}
+                      :description "Derive a C4 architecture snapshot from carto and persist it"}
+     "arch-render"   {:handler     (bind h-render)
+                      :params      {"scope"  {:type "string" :description "Project scope (or path)"}
+                                    "view"   {:type "string"
+                                              :description "View kind: system-landscape-view|context-view|container-view|component-view"}
+                                    "focus"  {:type "string" :description "Optional element id to focus the view"}
+                                    "format" {:type "string" :description "Output format (plantuml)"}}
+                      :description "Render the latest architecture snapshot to a diagram string"}
+     "arch-persona"  {:handler     (bind h-persona)
+                      :params      {"scope"   {:type "string" :description "Project scope (or path)"}
+                                    "element" {:type "string" :description "C4 element id to build a persona for"}}
+                      :description "Project a bounded-context persona prompt from the latest snapshot"}
+     "arch-list"     {:handler     (bind h-list)
+                      :params      {"scope" {:type "string" :description "Project scope (or path)"}}
+                      :description "List persisted C4 architecture snapshots for a scope"}
+     "arch-eco-emit" {:handler     (bind h-eco-emit)
+                      :params      {"root"       {:type "string"
+                                                  :description "Monorepo root to probe (deps.edn graph, git remotes, addon manifests)"}
+                                    "out"        {:type "string"
+                                                  :description "Output dir for Overarch model dirs (default: models)"}
+                                    "config"     {:type "string"
+                                                  :description "Path to an EcoConfig EDN file (orgs, layer table, visibility rules)"}
+                                    "config-edn" {:type "string"
+                                                  :description "Inline EcoConfig EDN (overrides config path)"}
+                                    "persist"    {:type "string"
+                                                  :description "\"true\" to also persist the full model as a c4-snapshot via IModelStore"}}
+                      :description "Derive ecosystem C4 model + mind-map from monorepo facts and emit full + open Overarch model dirs"}}))
+
+(def ^:private commands (command-table system))
 
 (defn- make-addon []
   (let [state (atom {:initialized? false})]
