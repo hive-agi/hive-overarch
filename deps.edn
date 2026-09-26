@@ -33,7 +33,7 @@
 
   ;; malli — schema layer for the ecosystem value objects (self-contained; no
   ;; hive-spi). House pin: 0.20.1.
-  metosin/malli {:mvn/version "0.20.1"}}
+  metosin/malli {:mvn/version "0.20.2"}}
 
  :aliases
  {
