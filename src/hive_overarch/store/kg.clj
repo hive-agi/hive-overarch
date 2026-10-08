@@ -73,11 +73,15 @@
   (list-snapshots [_ scope]
     (r/let-ok [entries ((:query (or memory default-memory))
                         {:type "c4-snapshot" :project-id scope :limit 100})]
-      (let [local (->> (some-> recent deref vals)
+      (let [persisted (mapv entry->ref entries)
+            ;; Evict cached snapshots the persisted read now carries: the cache
+            ;; only has to bridge writes still in flight, and stays bounded.
+            _     (when recent (apply swap! recent dissoc (keep :id persisted)))
+            local (->> (some-> recent deref vals)
                        (filter #(= scope (get-in % [:provenance :scope])))
                        (sort-by #(get-in % [:provenance :taken-at]))
                        (map model->ref))]
-        (r/ok (merge-refs [(mapv entry->ref entries) local])))))
+        (r/ok (merge-refs [persisted local])))))
 
   (latest [this scope]
     (r/let-ok [refs (p/list-snapshots this scope)]

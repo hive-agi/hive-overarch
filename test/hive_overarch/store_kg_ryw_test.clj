@@ -3,6 +3,7 @@
    a snapshot! followed at once by render! must still find the model. Tested
    through the store's memory PORT with a lagging stub (writes never become
    visible to queries), plus a trifecta over the pure ref merge."
+  (:refer-clojure :exclude [ref])
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.test.check.generators :as gen]
             [hive-dsl.result :as r]
@@ -44,6 +45,24 @@
                             :query (fn [_] (r/ok []))})]
     (is (r/err? (p/put-snapshot store (snapshot "snap-1" "demo" #inst "2026-01-01"))))
     (is (= :store/no-snapshots (:error (p/latest store "demo"))))))
+
+(deftest cache-evicts-once-persisted
+  (let [entries (atom [])
+        memory  {:add!  (fn [e] (swap! entries conj e) (r/ok "id"))
+                 :query (fn [{:keys [project-id tags]}]
+                          (r/ok (filter #(or (= project-id (:project-id %))
+                                             (some (set tags) (:tags %)))
+                                        @entries)))}
+        store   (kg/kg-store memory)
+        s1      (snapshot "snap-1" "demo" #inst "2026-01-01")]
+    (is (r/ok? (p/put-snapshot store s1)))
+    (is (contains? @(:recent store) "snap-1"))
+    (testing "a list that sees the persisted entry evicts it from the cache"
+      (is (= ["snap-1"] (mapv :id (:ok (p/list-snapshots store "demo")))))
+      (is (empty? @(:recent store))))
+    (testing "get-snapshot then falls through to memory"
+      (is (= "snap-1" (get-in (:ok (p/get-snapshot store "snap-1"))
+                              [:provenance :snapshot-id]))))))
 
 ;; ---- trifecta over the pure merge ----
 
