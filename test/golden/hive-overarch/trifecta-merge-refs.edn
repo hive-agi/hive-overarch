@@ -1,0 +1,6 @@
+{:both-empty [],
+ :disjoint ["a" "b"],
+ :overlap ["a" "b" "c"],
+ :persisted-only ["a" "b"],
+ :recent-only ["a"],
+ :recent-precedes ["b" "a"]}
