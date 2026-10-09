@@ -24,36 +24,49 @@
     (r/try-effect* :hive/call-failed (apply f args))
     (r/err :capability/unavailable {:symbol sym})))
 
-;; ---- carto (hive-knowledge) ----
+;; ---- carto (hive-carto; formerly hive-knowledge) ----
+
+(def carto-symbols
+  "The symbol each carto capability of this boundary resolves. The artisan
+   carto namespaces moved from hive-knowledge to hive-carto; none of the
+   hive-knowledge.artisan.carto.* namespaces exist any more."
+  {:carto-search   'hive-carto.artisan.carto.read/carto-search
+   :carto-callees  'hive-carto.artisan.carto.read/carto-callees
+   :make-clusterer 'hive-carto.artisan.carto.suggest.protocols/make-clusterer
+   :cluster        'hive-carto.artisan.carto.suggest.protocols/cluster})
+
+(def clusterer-namespaces
+  "Namespaces whose defmethods register the clusterer types."
+  '[hive-carto.artisan.carto.suggest.clusterers.connected
+    hive-carto.artisan.carto.suggest.clusterers.greedy
+    hive-carto.artisan.carto.suggest.clusterers.ns-prefix])
 
 (defn carto-qns
   "All qualified names in scope -> Result<seq<{:qn :file :line}>>."
   [scope]
-  (call 'hive-knowledge.artisan.carto.read/carto-search
+  (call (:carto-search carto-symbols)
         {:ns-pattern "" :scope scope :limit 10000}))
 
 (defn carto-callees
   "Outgoing depends-on targets of qn -> Result<seq<{:qn ...}>>."
   [qn scope]
-  (call 'hive-knowledge.artisan.carto.read/carto-callees
+  (call (:carto-callees carto-symbols)
         {:qn qn :scope scope}))
 
 (defn make-clusterer
   "Construct an Overarch-style graph clusterer of :type. Loads the impl
    namespaces first so their defmethods register the type."
   [type]
-  (doseq [ns- '[hive-knowledge.artisan.carto.suggest.connected
-                hive-knowledge.artisan.carto.suggest.greedy
-                hive-knowledge.artisan.carto.suggest.ns-prefix]]
+  (doseq [ns- clusterer-namespaces]
     (r/rescue nil (require ns-)))
-  (call 'hive-knowledge.artisan.carto.suggest.protocols/make-clusterer {:type type}))
+  (call (:make-clusterer carto-symbols) {:type type}))
 
 (defn cluster
   "Partition graph {:nodes :edges} into clusters -> Result<seq<set>>."
   [clusterer graph opts]
-  (if-let [f (resolve-fn 'hive-knowledge.artisan.carto.suggest.protocols/cluster)]
+  (if-let [f (resolve-fn (:cluster carto-symbols))]
     (r/try-effect* :carto/cluster-failed (f clusterer graph opts))
-    (r/err :capability/unavailable {:symbol 'hive-knowledge.artisan.carto.suggest.protocols/cluster})))
+    (r/err :capability/unavailable {:symbol (:cluster carto-symbols)})))
 
 ;; ---- memory store (hive-mcp) ----
 
