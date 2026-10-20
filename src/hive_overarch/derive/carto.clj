@@ -48,18 +48,31 @@
                :description (str (count qns) " forms across " (count namespaces) " namespace(s)")
                :carto-refs qns)))
 
+(defn- callees-in-scopes
+  "Outgoing depends-on targets of qn, read through `callees` ((qn scope) ->
+   Result) under each of scopes in order; the first scope that answers a
+   non-empty ok wins. nil when none does."
+  [callees qn scopes]
+  (some (fn [sc]
+          (let [res (callees qn sc)]
+            (when (and res (r/ok? res) (seq (:ok res))) res)))
+        scopes))
+
 (defn- qn-edges
-  "Parallel carto reads -> set of [from-qn to-qn] depends-on pairs."
-  [qns scope]
-  (let [results (wp/bounded-pmap {:concurrency 8 :timeout-ms 15000 :fallback nil}
-                                 (fn [qn] (hive/carto-callees qn scope))
+  "Parallel carto reads -> set of [from-qn to-qn] depends-on pairs. Only edges
+   whose BOTH ends are in `qns` survive: a callee outside the scope set is a
+   foreign form, and the derived graph must not carry it."
+  [callees qns scopes]
+  (let [in-set  (set qns)
+        results (wp/bounded-pmap {:concurrency 8 :timeout-ms 15000 :fallback nil}
+                                 (fn [qn] (callees-in-scopes callees qn scopes))
                                  qns)]
     (into #{}
           (mapcat (fn [qn res]
-                    (when (and res (r/ok? res))
+                    (when res
                       (for [c   (:ok res)
                             :let [to (:qn c)]
-                            :when to]
+                            :when (and to (contains? in-set to))]
                         [qn to])))
                   qns results))))
 
@@ -72,25 +85,84 @@
        (map-indexed (fn [i [ef et]]
                       (m/relation (keyword "c4-rel" (str "r" i)) ef et :name "depends on")))))
 
-(defrecord CartoDerivedSource [clusterer]
+(def default-ports
+  "The carto/HCR capabilities derivation reads through, as functions, all
+   resolved at call time through the hive boundary:
+     :qns         scope-or-scopes -> Result<seq<{:qn ..}>>
+     :callees     qn scope        -> Result<seq<{:qn ..}>>
+     :canonical   raw-scope       -> canonical project-id string
+     :descendants project-id      -> Result<set<project-id>>
+   Tests substitute stubs for these; no redefinition of the boundary."
+  {:qns         (fn [scope] (hive/carto-qns scope))
+   :callees     (fn [qn scope] (hive/carto-callees qn scope))
+   :canonical   (fn [scope] (hive/canonical-scope scope))
+   :descendants (fn [pid] (hive/descendant-ids pid))})
+
+(defn- blank-scope? [s]
+  (or (nil? s) (and (string? s) (str/blank? s))))
+
+(defn scope-plan
+  "Pure given its ports. Resolve the caller's raw scope (project-id | path |
+   alias) into the bounded set derivation may read ->
+   Result<{:pid canonical-id :scopes [pid & descendant-ids]}>.
+
+   The scope is canonicalized FIRST (HCR cartography.scope), so the model's
+   Provenance carries a real project-id rather than whatever spelling the
+   caller typed. Descendants join only when `:subtree?` is set: expanding to
+   child projects is an explicit request, and one that cannot be honoured
+   (no project tree) fails instead of silently narrowing. A nil or blank
+   scope is refused with :scope/unbounded: handed to carto it reads as every
+   indexed workspace."
+  [{:keys [canonical descendants]} scope {:keys [subtree?]}]
+  (if (blank-scope? scope)
+    (r/err :scope/unbounded {:scope scope})
+    (let [pid (canonical scope)]
+      (if (blank-scope? pid)
+        (r/err :scope/unbounded {:scope scope})
+        (if subtree?
+          (r/let-ok [kids (descendants pid)]
+            (r/ok {:pid pid :scopes (into [pid] (sort (remove #{pid} kids)))}))
+          (r/ok {:pid pid :scopes [pid]}))))))
+
+(defn rows-in-scope
+  "Defensive filter over carto rows. A row that names its own scope (:scope or
+   :project-id) must canonicalize into `allowed` (a set of project-ids); a
+   row naming none is kept, as carto-search rows carry no scope of their own
+   and were already bounded by the query. Rows without a :qn are dropped."
+  [canonical allowed rows]
+  (filterv (fn [row]
+             (and (:qn row)
+                  (let [own (or (:scope row) (:project-id row))]
+                    (or (blank-scope? own)
+                        (contains? allowed (canonical own))))))
+           rows))
+
+(defrecord CartoDerivedSource [clusterer ports]
   p/IModelSource
   (derive-model [_ scope opts]
-    (r/let-ok [qn-rows (hive/carto-qns scope)
-               :let [qns   (vec (keep :qn qn-rows))
-                     edges (qn-edges qns scope)
-                     graph {:nodes (set qns) :edges edges}]
-               clusters (p/cluster-graph clusterer graph
-                                         {:min-size (:min-size opts 3)
-                                          :max-size (:max-size opts 12)})]
-      (let [clusters (vec clusters)
-            elements (vec (map-indexed cluster->element clusters))
-            qn->eid  (into {} (mapcat (fn [el qset] (map (fn [q] [q (:id el)]) qset))
-                                      elements clusters))
-            relations (vec (cluster-relations edges qn->eid))
-            prov (m/->Provenance (str "c4-" (System/currentTimeMillis))
-                                 scope (str (java.time.Instant/now)) nil
-                                 :carto (:type clusterer))]
-        (r/ok (m/model elements relations prov))))))
+    (let [{:keys [qns callees canonical]} ports]
+      (r/let-ok [plan    (scope-plan ports scope opts)
+                 qn-rows (qns (:scopes plan))
+                 :let [pid       (:pid plan)
+                       scopes    (:scopes plan)
+                       qn-list   (vec (keep :qn (rows-in-scope canonical (set scopes) qn-rows)))
+                       edges     (qn-edges callees qn-list scopes)
+                       graph     {:nodes (set qn-list) :edges edges}]
+                 clusters (p/cluster-graph clusterer graph
+                                           {:min-size (:min-size opts 3)
+                                            :max-size (:max-size opts 12)})]
+        (let [clusters (vec clusters)
+              elements (vec (map-indexed cluster->element clusters))
+              qn->eid  (into {} (mapcat (fn [el qset] (map (fn [q] [q (:id el)]) qset))
+                                        elements clusters))
+              relations (vec (cluster-relations edges qn->eid))
+              prov (m/->Provenance (str "c4-" (System/currentTimeMillis))
+                                   pid (str (java.time.Instant/now)) nil
+                                   :carto (:type clusterer))]
+          (r/ok (m/model elements relations prov)))))))
 
 (defn carto-source
-  ([clusterer] (->CartoDerivedSource clusterer)))
+  "CartoDerivedSource over `clusterer`. `ports` defaults to `default-ports`
+   (the live hive boundary); a partial map overrides just those entries."
+  ([clusterer] (carto-source clusterer nil))
+  ([clusterer ports] (->CartoDerivedSource clusterer (merge default-ports ports))))
