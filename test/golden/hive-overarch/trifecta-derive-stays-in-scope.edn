@@ -1,0 +1,40 @@
+{:blank {:error :scope/unbounded},
+ :nil-scope {:error :scope/unbounded},
+ :path
+ {:scope "hive-overarch",
+  :nodes
+  ["ov.bare/untagged"
+   "ov.core/derive"
+   "ov.core/emit"
+   "ov.core/render"],
+  :edges
+  [["ov.core/derive" "ov.core/emit"]
+   ["ov.core/emit" "ov.core/render"]],
+  :foreign [],
+  :asked [["hive-overarch"]]},
+ :project-id
+ {:scope "hive-overarch",
+  :nodes
+  ["ov.bare/untagged"
+   "ov.core/derive"
+   "ov.core/emit"
+   "ov.core/render"],
+  :edges
+  [["ov.core/derive" "ov.core/emit"]
+   ["ov.core/emit" "ov.core/render"]],
+  :foreign [],
+  :asked [["hive-overarch"]]},
+ :subtree
+ {:scope "hive-overarch",
+  :nodes
+  ["kid.core/walk"
+   "ov.bare/untagged"
+   "ov.core/derive"
+   "ov.core/emit"
+   "ov.core/render"],
+  :edges
+  [["kid.core/walk" "ov.core/derive"]
+   ["ov.core/derive" "ov.core/emit"]
+   ["ov.core/emit" "ov.core/render"]],
+  :foreign [],
+  :asked [["hive-overarch" "overarch-kid"]]}}

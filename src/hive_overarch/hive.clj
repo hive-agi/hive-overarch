@@ -6,7 +6,8 @@
    gracefully when they are not. This is the ONLY namespace permitted to reach
    into hive-knowledge / hive-mcp internals. All returns are hive-dsl Results."
   (:require [hive-dsl.result :as r]
-            [hive-addon.registry.commands :as addon-cmds]))
+            [hive-addon.registry.commands :as addon-cmds]
+            [clojure.string :as str]))
 
 (defn- resolve-fn [sym]
   (r/rescue nil (requiring-resolve sym)))
@@ -41,11 +42,52 @@
     hive-carto.artisan.carto.suggest.clusterers.greedy
     hive-carto.artisan.carto.suggest.clusterers.ns-prefix])
 
+(defn- blank-scope?
+  "True for a scope that names nothing: nil, a blank string."
+  [s]
+  (or (nil? s) (and (string? s) (str/blank? s))))
+
 (defn carto-qns
-  "All qualified names in scope -> Result<seq<{:qn :file :line}>>."
+  "All qualified names in scope -> Result<seq<{:qn :file :line}>>.
+   `scope` is one scope string, or a collection of them: a collection goes
+   to carto-search as :scopes (one multi-project query, which already
+   canonicalizes each entry through the HCR alias set), a string as :scope.
+   A nil or blank scope is refused with :scope/unbounded instead of being
+   passed through: carto-search reads no scope as every indexed workspace."
   [scope]
-  (call (:carto-search carto-symbols)
-        {:ns-pattern "" :scope scope :limit 10000}))
+  (let [multi? (sequential? scope)
+        scopes (when multi? (vec (remove blank-scope? scope)))]
+    (if (if multi? (empty? scopes) (blank-scope? scope))
+      (r/err :scope/unbounded {:scope scope})
+      (call (:carto-search carto-symbols)
+            (cond-> {:ns-pattern "" :limit 10000}
+              multi?       (assoc :scopes scopes)
+              (not multi?) (assoc :scope scope))))))
+
+(def project-tree-symbols
+  "The symbol each HCR project-tree capability resolves. hive-mcp owns the
+   project hierarchy; it is reached only through this soft-resolved seam, so
+   hive-overarch never requires hive-mcp."
+  {:descendant-ids 'hive-mcp.project.tree/get-descendant-ids})
+
+(defn canonical-scope
+  "Raw scope (project-id | absolute path | alias) -> canonical project-id
+   string, through hive-carto's HCR scope resolver. Total: when the resolver
+   is absent or throws, the raw scope comes back unchanged, so the caller
+   still has a scope to bound its query with."
+  [scope]
+  (if-let [f (resolve-fn 'hive-carto.cartography.scope/canonical-pid)]
+    (let [res (r/try-effect* :hive/call-failed (f scope))]
+      (if (and (r/ok? res) (string? (:ok res)) (not (str/blank? (:ok res))))
+        (:ok res)
+        scope))
+    scope))
+
+(defn descendant-ids
+  "Project-ids of every descendant of project-id in the HCR project tree ->
+   Result<set<string>>. :capability/unavailable when hive-mcp is absent."
+  [project-id]
+  (call (:descendant-ids project-tree-symbols) project-id))
 
 (defn carto-callees
   "Outgoing depends-on targets of qn -> Result<seq<{:qn ...}>>."
