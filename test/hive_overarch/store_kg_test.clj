@@ -34,7 +34,7 @@
 
 (deftest snapshot-round-trip
   (let [fake   (make-fake-store)
-        store  (kg/->KgModelStore)
+        store  (kg/->KgModelStore nil nil)
         el-a   (m/element :c4/a :system "a" :tags #{"t"} :carto-refs ["x.y/z"])
         el-b   (m/element :c4/b :system "b")
         rel    (m/relation :c4-rel/r0 :c4/a :c4/b :name "connects")

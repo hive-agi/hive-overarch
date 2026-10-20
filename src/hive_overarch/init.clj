@@ -31,7 +31,9 @@
   (or (:scope params) (:path params)))
 
 (defn- h-snapshot [sys params]
-  (result->str (orch/snapshot! sys (param-scope params) {})))
+  (let [subtree? (contains? #{"true" "1" true} (:subtree params))]
+    (result->str (orch/snapshot! sys (param-scope params)
+                                 (cond-> {} subtree? (assoc :subtree? true))))))
 
 (defn- h-render [sys params]
   (let [kind  (some-> (:view params) keyword)

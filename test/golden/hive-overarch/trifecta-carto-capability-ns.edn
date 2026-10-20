@@ -1,0 +1,5 @@
+{:carto-callees "hive-carto.artisan.carto.read",
+ :carto-search "hive-carto.artisan.carto.read",
+ :cluster "hive-carto.artisan.carto.suggest.protocols",
+ :make-clusterer "hive-carto.artisan.carto.suggest.protocols",
+ :unknown nil}

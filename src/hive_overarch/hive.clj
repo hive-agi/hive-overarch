@@ -6,7 +6,8 @@
    gracefully when they are not. This is the ONLY namespace permitted to reach
    into hive-knowledge / hive-mcp internals. All returns are hive-dsl Results."
   (:require [hive-dsl.result :as r]
-            [hive-addon.registry.commands :as addon-cmds]))
+            [hive-addon.registry.commands :as addon-cmds]
+            [clojure.string :as str]))
 
 (defn- resolve-fn [sym]
   (r/rescue nil (requiring-resolve sym)))
@@ -24,36 +25,90 @@
     (r/try-effect* :hive/call-failed (apply f args))
     (r/err :capability/unavailable {:symbol sym})))
 
-;; ---- carto (hive-knowledge) ----
+;; ---- carto (hive-carto; formerly hive-knowledge) ----
+
+(def carto-symbols
+  "The symbol each carto capability of this boundary resolves. The artisan
+   carto namespaces moved from hive-knowledge to hive-carto; none of the
+   hive-knowledge.artisan.carto.* namespaces exist any more."
+  {:carto-search   'hive-carto.artisan.carto.read/carto-search
+   :carto-callees  'hive-carto.artisan.carto.read/carto-callees
+   :make-clusterer 'hive-carto.artisan.carto.suggest.protocols/make-clusterer
+   :cluster        'hive-carto.artisan.carto.suggest.protocols/cluster})
+
+(def clusterer-namespaces
+  "Namespaces whose defmethods register the clusterer types."
+  '[hive-carto.artisan.carto.suggest.clusterers.connected
+    hive-carto.artisan.carto.suggest.clusterers.greedy
+    hive-carto.artisan.carto.suggest.clusterers.ns-prefix])
+
+(defn- blank-scope?
+  "True for a scope that names nothing: nil, a blank string."
+  [s]
+  (or (nil? s) (and (string? s) (str/blank? s))))
 
 (defn carto-qns
-  "All qualified names in scope -> Result<seq<{:qn :file :line}>>."
+  "All qualified names in scope -> Result<seq<{:qn :file :line}>>.
+   `scope` is one scope string, or a collection of them: a collection goes
+   to carto-search as :scopes (one multi-project query, which already
+   canonicalizes each entry through the HCR alias set), a string as :scope.
+   A nil or blank scope is refused with :scope/unbounded instead of being
+   passed through: carto-search reads no scope as every indexed workspace."
   [scope]
-  (call 'hive-knowledge.artisan.carto.read/carto-search
-        {:ns-pattern "" :scope scope :limit 10000}))
+  (let [multi? (sequential? scope)
+        scopes (when multi? (vec (remove blank-scope? scope)))]
+    (if (if multi? (empty? scopes) (blank-scope? scope))
+      (r/err :scope/unbounded {:scope scope})
+      (call (:carto-search carto-symbols)
+            (cond-> {:ns-pattern "" :limit 10000}
+              multi?       (assoc :scopes scopes)
+              (not multi?) (assoc :scope scope))))))
+
+(def project-tree-symbols
+  "The symbol each HCR project-tree capability resolves. hive-mcp owns the
+   project hierarchy; it is reached only through this soft-resolved seam, so
+   hive-overarch never requires hive-mcp."
+  {:descendant-ids 'hive-mcp.project.tree/get-descendant-ids})
+
+(defn canonical-scope
+  "Raw scope (project-id | absolute path | alias) -> canonical project-id
+   string, through hive-carto's HCR scope resolver. Total: when the resolver
+   is absent or throws, the raw scope comes back unchanged, so the caller
+   still has a scope to bound its query with."
+  [scope]
+  (if-let [f (resolve-fn 'hive-carto.cartography.scope/canonical-pid)]
+    (let [res (r/try-effect* :hive/call-failed (f scope))]
+      (if (and (r/ok? res) (string? (:ok res)) (not (str/blank? (:ok res))))
+        (:ok res)
+        scope))
+    scope))
+
+(defn descendant-ids
+  "Project-ids of every descendant of project-id in the HCR project tree ->
+   Result<set<string>>. :capability/unavailable when hive-mcp is absent."
+  [project-id]
+  (call (:descendant-ids project-tree-symbols) project-id))
 
 (defn carto-callees
   "Outgoing depends-on targets of qn -> Result<seq<{:qn ...}>>."
   [qn scope]
-  (call 'hive-knowledge.artisan.carto.read/carto-callees
+  (call (:carto-callees carto-symbols)
         {:qn qn :scope scope}))
 
 (defn make-clusterer
   "Construct an Overarch-style graph clusterer of :type. Loads the impl
    namespaces first so their defmethods register the type."
   [type]
-  (doseq [ns- '[hive-knowledge.artisan.carto.suggest.connected
-                hive-knowledge.artisan.carto.suggest.greedy
-                hive-knowledge.artisan.carto.suggest.ns-prefix]]
+  (doseq [ns- clusterer-namespaces]
     (r/rescue nil (require ns-)))
-  (call 'hive-knowledge.artisan.carto.suggest.protocols/make-clusterer {:type type}))
+  (call (:make-clusterer carto-symbols) {:type type}))
 
 (defn cluster
   "Partition graph {:nodes :edges} into clusters -> Result<seq<set>>."
   [clusterer graph opts]
-  (if-let [f (resolve-fn 'hive-knowledge.artisan.carto.suggest.protocols/cluster)]
+  (if-let [f (resolve-fn (:cluster carto-symbols))]
     (r/try-effect* :carto/cluster-failed (f clusterer graph opts))
-    (r/err :capability/unavailable {:symbol 'hive-knowledge.artisan.carto.suggest.protocols/cluster})))
+    (r/err :capability/unavailable {:symbol (:cluster carto-symbols)})))
 
 ;; ---- memory store (hive-mcp) ----
 
