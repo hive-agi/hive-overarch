@@ -2,7 +2,8 @@
   "Immutable C4 value types and pure graph helpers. A C4Model is a SNAPSHOT:
    a value taken at a point in time, carrying its own Provenance. It is never
    mutated in place — a new state of the world is a new snapshot."
-  (:require [clojure.set :as set]))
+  (:require [clojure.set :as set]
+            [clojure.string :as str]))
 
 ;; kind for C4Element matches Overarch :el node keywords:
 ;;   :person :system :container :component :node
@@ -27,6 +28,17 @@
 (defn model
   [elements relations provenance]
   (->C4Model (vec elements) (vec relations) provenance))
+
+(defn stale?
+  "Pure: whether a snapshot whose Provenance is `prov` lags the live carto
+   scan `live-scan-id`. True when a live scan is known (a non-blank id) and
+   the snapshot was not taken from it, including a snapshot that recorded no
+   scan at all. False when no live scan is known: absence is not evidence."
+  [prov live-scan-id]
+  (boolean
+   (and (string? live-scan-id)
+        (not (str/blank? live-scan-id))
+        (not= live-scan-id (:carto-scan-id prov)))))
 
 ;; ---- pure graph helpers (used by view projection + persona) ----
 
