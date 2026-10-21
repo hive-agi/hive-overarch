@@ -95,6 +95,31 @@
   (call (:carto-callees carto-symbols)
         {:qn qn :scope scope}))
 
+(def scan-state-symbol
+  "hive-carto's per-project scan state: an atom of {project-id {:scan-id ..}},
+   one UUID string per queued scan. Reached by soft resolution only; to be
+   swapped for a published carto read port when hive-carto exports one."
+  'hive-carto.cartography.handlers.scan-state/scan-state)
+
+(defn carto-scan-id
+  "The id of carto's latest scan of `scope` (a canonical project-id), or nil.
+   Soft: nil when hive-carto is not on the classpath, the scope was never
+   scanned, the id is blank, or the read throws. Never a Result: a missing
+   lineage is a nil field on a snapshot, not a failed derivation.
+
+   The 2-arity reads `states` instead of resolving hive-carto: the scan-state
+   value, or a ref to it."
+  ([scope]
+   (carto-scan-id scope (resolve-fn scan-state-symbol)))
+  ([scope states]
+   (when-not (blank-scope? scope)
+     (r/rescue nil
+       (let [m  (if (instance? clojure.lang.IDeref states) @states states)
+             m  (if (instance? clojure.lang.IDeref m) @m m)
+             id (when (map? m) (get-in m [scope :scan-id]))]
+         (when (and (string? id) (not (str/blank? id)))
+           id))))))
+
 (defn make-clusterer
   "Construct an Overarch-style graph clusterer of :type. Loads the impl
    namespaces first so their defmethods register the type."

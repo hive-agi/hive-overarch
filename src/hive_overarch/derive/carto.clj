@@ -92,11 +92,13 @@
      :callees     qn scope        -> Result<seq<{:qn ..}>>
      :canonical   raw-scope       -> canonical project-id string
      :descendants project-id      -> Result<set<project-id>>
+     :scan-id     project-id      -> carto's latest scan id, or nil
    Tests substitute stubs for these; no redefinition of the boundary."
   {:qns         (fn [scope] (hive/carto-qns scope))
    :callees     (fn [qn scope] (hive/carto-callees qn scope))
    :canonical   (fn [scope] (hive/canonical-scope scope))
-   :descendants (fn [pid] (hive/descendant-ids pid))})
+   :descendants (fn [pid] (hive/descendant-ids pid))
+   :scan-id     (fn [pid] (hive/carto-scan-id pid))})
 
 (defn- blank-scope? [s]
   (or (nil? s) (and (string? s) (str/blank? s))))
@@ -137,6 +139,14 @@
                         (contains? allowed (canonical own))))))
            rows))
 
+(defn- live-scan-id
+  "The carto scan id to stamp on a snapshot of `pid`, read through the
+   :scan-id port. nil when the port is absent, answers nothing, or throws: a
+   snapshot without lineage is still a snapshot."
+  [ports pid]
+  (when-let [f (:scan-id ports)]
+    (r/rescue nil (f pid))))
+
 (defrecord CartoDerivedSource [clusterer ports]
   p/IModelSource
   (derive-model [_ scope opts]
@@ -157,7 +167,8 @@
                                         elements clusters))
               relations (vec (cluster-relations edges qn->eid))
               prov (m/->Provenance (str "c4-" (System/currentTimeMillis))
-                                   pid (str (java.time.Instant/now)) nil
+                                   pid (str (java.time.Instant/now))
+                                   (live-scan-id ports pid)
                                    :carto (:type clusterer))]
           (r/ok (m/model elements relations prov)))))))
 
