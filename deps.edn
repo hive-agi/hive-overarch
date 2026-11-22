@@ -39,7 +39,7 @@
  {
   ;; :build — tools.build entrypoint (clojure -T:build <task>). Canonical hive
   ;; build: jar / jar-aot / install / bump / verify-license / deploy.
-  :build {:deps {io.github.hive-agi/hive-build {:mvn/version "0.3.1"}}
+  :build {:deps {io.github.hive-agi/hive-build {:mvn/version "0.3.3"}}
           :ns-default hive-build.api}
 :dev {:extra-paths ["dev"]
         :extra-deps {nrepl/nrepl {:mvn/version "1.8.0"}
@@ -59,4 +59,4 @@
   ;; Exercise the live addon + carto path against real hive jars. Runtime code
   ;; resolves every hive-knowledge/hive-mcp capability via requiring-resolve, so
   ;; PRODUCTION deps stay overarch + hive-dsl + hive-weave only.
-  :with-hive {:extra-deps {io.github.hive-agi/hive-mcp {:mvn/version "1.18.0"}}}}}
+  :with-hive {:extra-deps {io.github.hive-agi/hive-mcp {:mvn/version "1.18.1"}}}}}
